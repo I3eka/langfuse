@@ -169,83 +169,128 @@ export async function appendRunEvents(params: {
     errorMessage?: string;
   };
 }): Promise<boolean> {
-  return params.prisma.$transaction(async (tx) => {
-    await lockConversationRow(tx, params.projectId, params.conversationId);
+  let appended: boolean;
+  try {
+    appended = await appendRunEventsInTransaction(params);
+  } catch (error) {
+    if (!isPrismaTransactionTimeout(error)) {
+      throw error;
+    }
+    appended = await appendRunEventsInTransaction(params);
+  }
 
-    if (params.finish) {
-      const finished = await tx.inAppAgentRun.updateMany({
+  if (appended) {
+    try {
+      await params.prisma.inAppAgentConversation.update({
         where: {
-          id: params.runId,
+          id_projectId: {
+            id: params.conversationId,
+            projectId: params.projectId,
+          },
+        },
+        data: { updatedAt: new Date() },
+      });
+    } catch (error) {
+      logger.error(
+        "Failed to touch in-app agent conversation after appending events",
+        {
+          error,
           projectId: params.projectId,
           conversationId: params.conversationId,
-          status: InAppAgentRunStatus.RUNNING,
-          finishedAt: null,
+          runId: params.runId,
         },
-        data: {
-          status: params.finish.status,
-          finishedAt: new Date(),
-          errorCode: params.finish.errorCode ?? null,
-          errorMessage: params.finish.errorMessage ?? null,
-        },
-      });
+      );
+    }
+  }
 
-      if (finished.count === 0) {
-        return false;
+  return appended;
+}
+
+async function appendRunEventsInTransaction(
+  params: Parameters<typeof appendRunEvents>[0],
+): Promise<boolean> {
+  return params.prisma.$transaction(
+    async (tx) => {
+      await lockConversationRow(tx, params.projectId, params.conversationId);
+
+      if (params.finish) {
+        const finished = await tx.inAppAgentRun.updateMany({
+          where: {
+            id: params.runId,
+            projectId: params.projectId,
+            conversationId: params.conversationId,
+            status: InAppAgentRunStatus.RUNNING,
+            finishedAt: null,
+          },
+          data: {
+            status: params.finish.status,
+            finishedAt: new Date(),
+            errorCode: params.finish.errorCode ?? null,
+            errorMessage: params.finish.errorMessage ?? null,
+          },
+        });
+
+        if (finished.count === 0) {
+          return false;
+        }
+      } else {
+        const activeRun = await tx.inAppAgentRun.findFirst({
+          where: {
+            id: params.runId,
+            projectId: params.projectId,
+            conversationId: params.conversationId,
+            status: InAppAgentRunStatus.RUNNING,
+          },
+          select: { id: true },
+        });
+
+        if (!activeRun) {
+          return false;
+        }
       }
-    } else {
-      const activeRun = await tx.inAppAgentRun.findFirst({
+
+      const latestEvent = await tx.inAppAgentEvent.findFirst({
         where: {
-          id: params.runId,
           projectId: params.projectId,
           conversationId: params.conversationId,
-          status: InAppAgentRunStatus.RUNNING,
         },
-        select: { id: true },
+        select: { sequenceNumber: true },
+        orderBy: { sequenceNumber: "desc" },
       });
 
-      if (!activeRun) {
-        return false;
-      }
-    }
-
-    const latestEvent = await tx.inAppAgentEvent.findFirst({
-      where: {
-        projectId: params.projectId,
-        conversationId: params.conversationId,
-      },
-      select: { sequenceNumber: true },
-      orderBy: { sequenceNumber: "desc" },
-    });
-
-    const compactedEvents = compactPersistedEvents(params.events).map(
-      (event, index) => ({
-        projectId: params.projectId,
-        conversationId: params.conversationId,
-        runId: params.runId,
-        sequenceNumber: (latestEvent?.sequenceNumber ?? -1) + index + 1,
-        type: String(event.type),
-        event: event as unknown as Prisma.InputJsonValue,
-      }),
-    );
-
-    if (compactedEvents.length > 0) {
-      await tx.inAppAgentEvent.createMany({
-        data: compactedEvents,
-      });
-    }
-
-    await tx.inAppAgentConversation.update({
-      where: {
-        id_projectId: {
-          id: params.conversationId,
+      const compactedEvents = compactPersistedEvents(params.events).map(
+        (event, index) => ({
           projectId: params.projectId,
-        },
-      },
-      data: { updatedAt: new Date() },
-    });
+          conversationId: params.conversationId,
+          runId: params.runId,
+          sequenceNumber: (latestEvent?.sequenceNumber ?? -1) + index + 1,
+          type: String(event.type),
+          event: event as unknown as Prisma.InputJsonValue,
+        }),
+      );
 
-    return true;
-  });
+      if (compactedEvents.length > 0) {
+        await tx.inAppAgentEvent.createMany({
+          data: compactedEvents,
+        });
+      }
+
+      return true;
+    },
+    {
+      // US interactive transactions have been observed exceeding Prisma's 5s
+      // default (P2028). Keep the lock window to lock + CAS + insert only.
+      maxWait: 10_000,
+      timeout: 15_000,
+    },
+  );
+}
+
+function isPrismaTransactionTimeout(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2028"
+  );
 }
 
 export async function getConversationEvents(params: {
