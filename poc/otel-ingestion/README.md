@@ -22,7 +22,7 @@ deduplication tokens or their limited retention window.
 
 ```
 # shared driver + verifiers (engine-agnostic)
-EXPERIMENTS.md        30-entry experiment log, findings, and deep dives
+EXPERIMENTS.md        31-entry experiment log, findings, and deep dives
 harness.mjs           run driver (--engine ch|rust): schedules commit batches, prints summary
 bench.mjs             alternating multi-run comparison -> median [min..max] table
 checksum.mjs          per-column cityHash64 sums: proves Path A output ≡ Path B output

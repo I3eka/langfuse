@@ -186,6 +186,21 @@ root`). First lesson: netem's default 1000-packet queue DROPS under
     S3 (observed there on a 40 GB partition of wide parts, different shape
     and vintage). → Publish on Cloud: pay latency, not bytes; the earlier
     "1–2 CopyObject per batch" budget is retired.
+31. **part_log attribution of the S3 write stream** — per run: ~40 staging
+    `NewPart` (exactly one part per window: server-side squashing holds for
+    streamed inserts on Cloud), ~6 target `MergeParts` (~1× deferred rewrite
+    of moved bytes — normal MergeTree amplification), and the MOVE mechanism
+    made visible: `DownloadPart` on the target matches staging NewParts
+    count-and-byte for byte — SMT re-parents the part in Keeper and the
+    target then pulls it into its local disk cache (an S3 read, no copy).
+    The majority of the raw PUT count is the server's own S3-backed log
+    tables (aggregated_zookeeper_log, metric_log, text_log, ...) flushing
+    kilobyte parts continuously. Caveat surfaced by the byte column: the
+    synthetic corpus compresses ~43× (1.86 GB raw → ~43 MiB of parts), far
+    beyond prod ratios — engine comparisons unaffected (identical bytes in),
+    but absolute S3 storage and PUT-size conclusions are unrepresentatively
+    small. → Publish is a metadata flip + cache warm; per-window S3 cost is
+    one packed-part PUT plus its eventual merge rewrite.
 
 ## Key findings (measured)
 
