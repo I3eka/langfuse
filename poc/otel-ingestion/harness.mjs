@@ -25,8 +25,9 @@ const S3_FROM_CH = {
   secretKey: process.env.POC_MINIO_SECRET_KEY ?? "miniosecret",
 };
 
+// capped by the staging-table pool (events_poc_staging_0..7)
 const CONCURRENCY = Math.min(
-  4,
+  8,
   Number(process.argv[process.argv.indexOf("--concurrency") + 1] || 1) || 1,
 );
 const ENGINE =

@@ -24,10 +24,14 @@ export function createChEngine({ chq, s3FromCh }) {
 
   // Concurrent MOVE PARTITION TO TABLE into one target can race server-side
   // (25.12: LOGICAL_ERROR "Temporary part tmp_move_from_... already added"),
-  // so the commit step is single-writer. Moves are milliseconds; INSERTs —
-  // the long pole — still overlap freely.
+  // so the commit step is single-writer by default. On SharedMergeTree the
+  // publish costs ~150ms of coordination per window, so a serialized move
+  // train can floor the whole run's wall time — POC_MOVE_LOCK=0 lets the
+  // moves overlap to test whether SMT handles concurrent moves safely.
+  const lockMoves = process.env.POC_MOVE_LOCK !== "0";
   let moveLock = Promise.resolve();
   function withMoveLock(fn) {
+    if (!lockMoves) return fn();
     const run = moveLock.then(fn);
     moveLock = run.catch(() => {});
     return run;

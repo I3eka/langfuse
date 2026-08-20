@@ -93,3 +93,7 @@ CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_0 AS poc_chlb.events_poc;
 CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_1 AS poc_chlb.events_poc;
 CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_2 AS poc_chlb.events_poc;
 CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_3 AS poc_chlb.events_poc;
+CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_4 AS poc_chlb.events_poc;
+CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_5 AS poc_chlb.events_poc;
+CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_6 AS poc_chlb.events_poc;
+CREATE TABLE IF NOT EXISTS poc_chlb.events_poc_staging_7 AS poc_chlb.events_poc;
