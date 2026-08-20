@@ -277,6 +277,49 @@ Always fetch pricing from the provider's official docs before editing.
   applying it to the bare (non-`ft:`) entry — a summarizer can silently pick either table
   when both rows share the same model name.
 
+- **Premium speed-tier pricing (`service_tier`/`speed`) is documented for far more
+  models than currently have a matching tier in the file (found 2026-08-20)** — The
+  `model_parameters` tier-condition mechanism landed in PR #16204 (2026-08-18) and was
+  used to add a "Fast mode" tier (`service_tier` in `["fast","priority"]`) to exactly
+  four OpenAI entries: `gpt-5.5-2026-04-23`, `gpt-5.6-sol`, `gpt-5.6-terra`, and
+  `gpt-5.6-luna`. Two independent `developers.openai.com/api/docs/pricing` fetches this
+  run (one broad, one asking to quote the "Fast mode" table verbatim, plus a request to
+  quote the separate "Flex" table verbatim) confirm OpenAI documents official Fast mode
+  and Flex processing prices for many more models that still have only a `Standard`
+  tier in the pricing file:
+  - **Fast mode** (`service_tier: "fast"` or `"priority"`; "Priority processing" was
+    renamed "Fast mode" on 2026-07-30, both values still accepted) — confirmed
+    per-MTok short-context prices (input / cached input / output; cache writes only
+    where shown): `gpt-5.4` $5.00/$0.50/$30.00, `gpt-5.4-mini` $1.50/$0.15/$9.00,
+    `gpt-5.2` $3.50/$0.35/$28.00, `gpt-5.1` $2.50/$0.25/$20.00, `gpt-5` $2.50/$0.25/$20.00,
+    `gpt-5-mini` $0.45/$0.045/$3.60, `gpt-4.1` $3.50/$0.875/$14.00, `gpt-4.1-mini`
+    $0.70/$0.175/$2.80, `gpt-4.1-nano` $0.20/$0.05/$0.80, `gpt-4o` $4.25/$2.125/$17.00,
+    `gpt-4o-2024-05-13` $8.75/—/$26.25, `gpt-4o-mini` $0.25/$0.125/$1.00, `o3`
+    $3.50/$0.875/$14.00, `o4-mini` $2.00/$0.50/$8.00. (`gpt-5.5` Fast mode price was
+    already re-confirmed as unchanged at $12.50/$1.25/$75.00 in the pricing file.)
+  - **Flex** (`service_tier: "flex"`, a discount tier, roughly half of standard) —
+    confirmed for `gpt-5.6-sol` $2.50/$0.25/$15.00, `gpt-5.6-terra` $1.00/$0.10/$6.00,
+    `gpt-5.6-luna` $0.10/$0.01/$0.60, `gpt-5.5` $2.50/$0.25/$15.00, `gpt-5.4`
+    $1.25/$0.13/$7.50, plus `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.4-pro`, `gpt-5.2`,
+    `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `o3`, and `o4-mini` (prices seen but
+    not individually re-quoted this run). No pricing-file entry currently has a `flex`
+    tier at all — this is a wholly new, currently unrepresented tiering dimension.
+  - **Anthropic has the same class of gap**: the pricing page's "Fast mode pricing"
+    section documents Claude Opus 5 / Claude Opus 4.8 Fast mode at $10/$50 per MTok
+    input/output (`speed: "fast"` request parameter), but neither `claude-opus-5` nor
+    `claude-opus-4-8` has a Fast-mode tier in the pricing file (both are single-tier
+    `Standard`-only entries as of 2026-08-20). The `model_parameters` condition source
+    is generic (`packages/shared/src/server/pricing-tiers/matcher.ts` reads whatever key
+    is present in the ingested `modelParameters`), so a `key: "speed"`, `values: ["fast"]`
+    condition would represent this the same way `service_tier` represents OpenAI's.
+  - This was intentionally **not** added during the 2026-08-20 automated audit: expanding
+    Fast mode to ~14 OpenAI models plus introducing the first-ever Flex tier and an
+    Anthropic speed tier is a broad, multi-model rollout rather than a surgical fix, and
+    the recent human-authored PR deliberately scoped itself to four models. Treat this as
+    a queued, well-evidenced follow-up for a deliberate PR, not something to silently
+    expand a little more on every future audit. Re-verify prices before acting since this
+    note will age.
+
 Capture:
 
 1. Base input token price per million tokens
