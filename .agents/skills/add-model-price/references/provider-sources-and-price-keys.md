@@ -173,8 +173,7 @@ Always fetch pricing from the provider's official docs before editing.
   Pricing: $1.75/MTok input, $0.175/MTok cached input, $14.00/MTok output. Context window:
   400k tokens; max output 128k tokens. No large-context tier. No date-stamped snapshot at
   launch. Standard OpenAI matchPattern: `(?i)^(openai\/)?(gpt-5.3-codex)$`. Added to pricing
-  file and `openAIModels` in July 27 2026 audit. Official sources:
-  `https://developers.openai.com/api/docs/pricing` and
+file and `openAIModels`in July 27 2026 audit. Official sources:`https://developers.openai.com/api/docs/pricing` and
   `https://developers.openai.com/api/docs/models/gpt-5.3-codex`.
 - **GPT-5.6 Terra / Luna price cut (found July 31 2026)** — OpenAI lowered pricing for
   `gpt-5.6-terra` and `gpt-5.6-luna` sometime between the July 27 and July 31 2026 audits;
@@ -237,7 +236,7 @@ Always fetch pricing from the provider's official docs before editing.
   condition can never legitimately fire for this model. The tier was removed; the model now
   has only the Standard tier, matching the precedent set by `claude-haiku-4-5-20251001`
   (also a 200k-context model with no Large Context tier). If a future model is documented
-  with a *soft* extended-context cap that bills at a premium rate past a threshold below its
+  with a _soft_ extended-context cap that bills at a premium rate past a threshold below its
   hard context-window limit, that would justify a real tier — verify the hard context-window
   size first before trusting an existing Large Context tier on a non-1M-context Claude model.
 - **AWS Bedrock "Claude 3.5 Sonnet (Public Extended Access)" pricing confirmed real but not
@@ -278,15 +277,14 @@ Always fetch pricing from the provider's official docs before editing.
   when both rows share the same model name.
 
 - **Premium speed-tier pricing (`service_tier`/`speed`) is documented for far more
-  models than currently have a matching tier in the file (found 2026-08-20)** — The
+  models than the initial rollout covered (implemented 2026-08-20)** — The
   `model_parameters` tier-condition mechanism landed in PR #16204 (2026-08-18) and was
   used to add a "Fast mode" tier (`service_tier` in `["fast","priority"]`) to exactly
   four OpenAI entries: `gpt-5.5-2026-04-23`, `gpt-5.6-sol`, `gpt-5.6-terra`, and
   `gpt-5.6-luna`. Two independent `developers.openai.com/api/docs/pricing` fetches this
   run (one broad, one asking to quote the "Fast mode" table verbatim, plus a request to
   quote the separate "Flex" table verbatim) confirm OpenAI documents official Fast mode
-  and Flex processing prices for many more models that still have only a `Standard`
-  tier in the pricing file:
+  and Flex processing prices for many more models:
   - **Fast mode** (`service_tier: "fast"` or `"priority"`; "Priority processing" was
     renamed "Fast mode" on 2026-07-30, both values still accepted) — confirmed
     per-MTok short-context prices (input / cached input / output; cache writes only
@@ -302,23 +300,22 @@ Always fetch pricing from the provider's official docs before editing.
     `gpt-5.6-luna` $0.10/$0.01/$0.60, `gpt-5.5` $2.50/$0.25/$15.00, `gpt-5.4`
     $1.25/$0.13/$7.50, plus `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.4-pro`, `gpt-5.2`,
     `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `o3`, and `o4-mini` (prices seen but
-    not individually re-quoted this run). No pricing-file entry currently has a `flex`
-    tier at all — this is a wholly new, currently unrepresented tiering dimension.
+    not individually re-quoted during the audit; all were re-read from the live table
+    before implementation). The pricing file now represents these with
+    `modelParameters.service_tier in ["flex"]`.
   - **Anthropic has the same class of gap**: the pricing page's "Fast mode pricing"
     section documents Claude Opus 5 / Claude Opus 4.8 Fast mode at $10/$50 per MTok
     input/output (`speed: "fast"` request parameter), but neither `claude-opus-5` nor
     `claude-opus-4-8` has a Fast-mode tier in the pricing file (both are single-tier
-    `Standard`-only entries as of 2026-08-20). The `model_parameters` condition source
-    is generic (`packages/shared/src/server/pricing-tiers/matcher.ts` reads whatever key
-    is present in the ingested `modelParameters`), so a `key: "speed"`, `values: ["fast"]`
-    condition would represent this the same way `service_tier` represents OpenAI's.
-  - This was intentionally **not** added during the 2026-08-20 automated audit: expanding
-    Fast mode to ~14 OpenAI models plus introducing the first-ever Flex tier and an
-    Anthropic speed tier is a broad, multi-model rollout rather than a surgical fix, and
-    the recent human-authored PR deliberately scoped itself to four models. Treat this as
-    a queued, well-evidenced follow-up for a deliberate PR, not something to silently
-    expand a little more on every future audit. Re-verify prices before acting since this
-    note will age.
+    `Standard`-only entries before the follow-up). The generated Anthropic Python SDK's
+    beta `MessageCreateParamsBase` confirms the request field is `speed`, with values
+    `"standard" | "fast"`; Anthropic's separate `service_tier` field controls capacity
+    and is not the Fast-mode discriminator. The pricing file therefore matches
+    `modelParameters.speed in ["fast"]`.
+  - The 2026-08-20 follow-up added every Fast and Flex tier listed above to alias and
+    dated-snapshot entries, plus combined Flex/large-context tiers where the documented
+    > 272K multiplier applies. It also added the two Anthropic Fast-mode tiers, including
+    > the documented prompt-cache multipliers.
 
 Capture:
 
