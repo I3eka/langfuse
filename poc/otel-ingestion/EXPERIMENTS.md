@@ -176,6 +176,16 @@ root`). First lesson: netem's default 1000-packet queue DROPS under
     2.53–2.57 GiB — the HOF captured-array amplification reproduced on
     Cloud to the digit. → A scales with service size or the 26.6 analyzer;
     B scales with scheduling width, which is free.
+30. **Does the SMT MOVE copy bytes?** — global `system.events` deltas across
+    one full 40-window run: S3CopyObject +5, S3PutObject +361. Forty-plus
+    parts changed tables with essentially zero copies, so at this shape
+    (small packed parts, same service) MOVE PARTITION TO TABLE is a Keeper
+    metadata operation — the ~150 ms/window is coordination, not data
+    movement, and the publish step has no per-byte S3 cost. This contradicts
+    the internal support answer that cross-table moves always copy through
+    S3 (observed there on a 40 GB partition of wide parts, different shape
+    and vintage). → Publish on Cloud: pay latency, not bytes; the earlier
+    "1–2 CopyObject per batch" budget is retired.
 
 ## Key findings (measured)
 
