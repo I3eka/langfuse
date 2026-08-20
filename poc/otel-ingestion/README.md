@@ -257,8 +257,8 @@ stayed within ±2% while Path A's varied by ±30% between runs. Raising
 concurrency (Path B's request cap, Path A's `max_threads`) did not help
 under the shaper, but that is a limit of the simulation — its shared
 bandwidth bucket penalizes extra connections, whereas real S3 scales per
-connection. TLS and S3 throttling are also not simulated, so the cloud run
-remains the authority on connection tuning.
+connection. TLS and S3 throttling are also not simulated; the Cloud section
+below carries the real-S3 measurements.
 
 ### Large-file stress
 
@@ -293,6 +293,43 @@ The allocation profiles, version comparisons, settings tested, and worker
 parser measurements are in the
 [full size-skew analysis](EXPERIMENTS.md#size-skew-stress-the-full-story).
 The same file also contains the full CPU decomposition and version matrix.
+
+### Cloud (staging, real S3, ClickHouse Cloud 26.2)
+
+The same harness ran unchanged against a pinned 8 vCPU / 32 GB Cloud service
+(SharedMergeTree) and the staging events bucket, with the driver and worker on
+one in-region 8 vCPU host. The corpus is 1.86 GB across 40 windows, with a
+~50 MB single-span file mixed into four of them. Checksums and media offsets
+held on the first run against the production ClickHouse version.
+
+|                          | Path A                | Path B                              |
+| ------------------------ | --------------------- | ----------------------------------- |
+| wall @ 4 lanes, defaults | 9.3–9.6 s → ~195 MB/s | 8.5–8.9 s → ~210 MB/s               |
+| wall @ 16 lanes, tuned   | 5.8 s → 318 MB/s      | 3.4 s → 553 MB/s (595 solo)         |
+| total CPU                | 34.5 s                | 19.0 s (9.3 worker + 9.7 CH insert) |
+| peak memory              | ~2.5 GiB server/query | 469 MiB CH insert + ~0.7 GiB worker |
+
+At 4 lanes the engines are indistinguishable because the wall is pipeline
+arithmetic: ~0.85 s of per-window latency times 40 windows over 4 lanes.
+Widening the staging pool was the only lever that mattered — raising the
+worker's S3 connections (16 → 64) changed nothing at these lane counts. Path B
+kept scaling to 16 lanes; Path A stopped at 5.8 s because the service ran out
+of CPU: its per-batch insert median tripled from queueing while total CPU
+stayed ~34.5 s. On a fixed service, Path A's next step is a bigger service or
+the 26.6 analyzer; Path B still has ~3× headroom before ClickHouse saturates.
+
+**S3 economics.** `MOVE PARTITION` on SharedMergeTree moves metadata, not
+data: across whole runs `S3CopyObject` stayed at ~0, and `part_log` shows the
+target table pulling the moved parts into its disk cache — a Keeper re-parent
+plus a cache warm, ~150 ms of coordination per window and no per-byte cost.
+Concurrent moves into one target were error-free across hundreds of commits,
+so the single-writer commit lock our local runs needed is a local-MergeTree
+workaround, not part of the design. The per-window S3 bill is therefore one
+GET per raw file (identical in both paths — the server fetches for A, the
+worker for B), one packed-part PUT, and that part's eventual background-merge
+rewrite; publishing adds no requests. One caveat: the synthetic corpus
+compresses ~43×, so absolute part sizes and storage costs read smaller than
+production would; request counts and the engine comparison are unaffected.
 
 ## Developer experience
 
@@ -480,11 +517,11 @@ semantics, commit protocol, and harness. It reached checksum parity across all
 
 Median results from five alternating runs on the standard corpus:
 
-|                       | Go       | Rust     |
-| --------------------- | -------- | -------- |
-| throughput            | 652 MB/s | 631 MB/s |
-| total CPU             | 1.38 s   | 0.73 s   |
-| worker RSS            | 300 MiB  | 88 MiB   |
+|            | Go       | Rust     |
+| ---------- | -------- | -------- |
+| throughput | 652 MB/s | 631 MB/s |
+| total CPU  | 1.38 s   | 0.73 s   |
+| worker RSS | 300 MiB  | 88 MiB   |
 
 Go matched Rust's throughput, but used roughly twice the total CPU and more
 worker memory. After replacing `encoding/json` with the experimental json/v2
@@ -507,22 +544,6 @@ did not justify keeping it. The spike was removed from the working tree but
 remains in Git history (`git log -- poc/otel-ingestion/engine-go`). Entries
 25–27 in [EXPERIMENTS.md](EXPERIMENTS.md) contain the implementation and
 profiling details.
-
-## Swapping to Cloud
-
-This should only run against a dev service. Copy the internal-project raw
-files to a scratch prefix and adjust the `_path` project regex to
-`otel/{projectId}/...`. Use either a scoped read-only key or a Cloud S3 role,
-and run the test in-region.
-
-For Path A, monitor `query_log` with
-`log_comment='poc-chlb-transform-v2'` and watch whether the partition moves
-create unexpected ClickHouse Keeper coordination load. The behavior of
-frequent `MOVE PARTITION` commits on Cloud's SharedMergeTree is the main
-unknown. Path B inserts use
-`log_comment='poc-chlb-rust-insert'`; its equivalent test is an in-region
-machine running the binary. The binary is configured through environment
-variables, so no code changes should be needed.
 
 ## Deliberate simplifications
 
