@@ -147,6 +147,35 @@ root`). First lesson: netem's default 1000-packet queue DROPS under
     (`git log -- poc/otel-ingestion/engine-go` finds it). The lasting result is
     a measured fallback: Go achieved parity and comparable throughput, with
     quantified CPU, memory, dependency, and maintenance costs.
+28. **Cloud rig: staging eu-west-1, 26.2 SharedMergeTree, real S3** — pinned
+    32 GB × 1 bench service over PrivateLink, driver + worker on a
+    c7i.2xlarge SSM bastion, corpus under the events bucket's otel/ prefix.
+    Parity held on the FIRST cloud run: 38/38 columns ch↔rust on 26.2 +
+    real S3, media offsets 25/25. Publish cost is real on SMT: MOVE
+    PARTITION ~150 ms/window of coordination (vs ~5 ms local), yet
+    query-attributed S3CopyObject stays 0 even for MOVEs that carry the
+    log_comment — either the copy lands outside query ProfileEvents or
+    small packed parts dodge it; global system.events deltas are the next
+    diagnostic. → The commit protocol works unchanged on Cloud; publish
+    latency, not request count, is its price.
+29. **Cloud wall ladder** (1.86 GB, 40 windows, one ~50 MB pathological
+    single-span file mixed into each of the first four) — defaults @4:
+    A 9.4 s vs B 8.7 s, indistinguishable, because the wall was pipeline
+    arithmetic (~850 ms/window × 40 / 4 lanes), not engine speed. Levers in
+    isolation: net concurrency 16→64 @4 — no change (downloads never
+    bound); MOVE lock off @4 — no wall change, but ~320 unserialized MOVEs
+    into one target produced ZERO errors on SMT while the same knob
+    reproduces the 25.12 LOGICAL_ERROR locally within seconds → the
+    single-writer commit is a local-MergeTree workaround, unnecessary on
+    Cloud. Slots 4→8→16 was the lever that mattered: A 9.4 → 6.3 → 5.8 s
+    (318 MB/s, CPU-bound: 34.5 CPU-s on 8 vCPU, per-batch insert
+    578 → 1689 ms = queueing) vs B 9.3 → 5.5 → **3.4 s (553 MB/s)**, now
+    floored by the slowest pathological window (~2.4 s). Final @16: B =
+    1.7× wall, 1.8× total CPU (19.0 vs 34.5), 72% of server CPU moved out
+    of the database, worker+receive peak 469 MiB flat vs A's
+    2.53–2.57 GiB — the HOF captured-array amplification reproduced on
+    Cloud to the digit. → A scales with service size or the 26.6 analyzer;
+    B scales with scheduling width, which is free.
 
 ## Key findings (measured)
 
